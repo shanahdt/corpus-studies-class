@@ -1,0 +1,1304 @@
+---
+title: "Week 2: Melodic and Harmonic Intervals"
+---
+
+
+# Overview 
+
+This week, we will be discussing melodic and harmonic intervals. Put very succinctly, we might think of melodic intervals as being the "horizontal" (note *x* goes to note *y*), and harmonic intervals being the "vertical" (note *x* and note *y* are happening at the same time). 
+
+Before we tackle that, however, let's first have a look at how to loop over multiple pieces, rather than just one.
+
+# Looping
+
+There are a handful of steps to take when looking at a large collection of pieces.
+
+1. Consider standardizing the feature that you're looking at across pieces. 
+   1. This could be as simple as looking at scale degree, rather than pitches, or it could include looking at multiple features together, such as scale degree, beat strength, harmonic interval, *etc.*
+2. Loop over the entire corpus and compile everything into a single dataframe.
+
+## Charlie Parker and Dizzy Gillespie
+
+Let's have a look at two of the pioneers of Bebop as a way of exploring melodic practice on the whole corpus. 
+
+For each of these methods, we will run a loop that computes the scale degree, looking at it in relation to a broader key stated earlier in the file.
+
+::: {.panel-tabset}
+
+### Humdrum
+The humdrum command runs a loop over all of the files with a kern extension in a folder. Here, my specific `path` of the folder is `data/charlie_parker/` and then the `*` is telling it to look for "all files" with that extension. The `*` is commonly referred to as a `wildcard`.
+
+```{bash, eval=FALSE}
+
+for file in data/charlie_parker/*.krn
+    do
+        deg -a $file |
+        extract -f 1 | 
+        grep -v '=' | 
+        rid -GLId | 
+        grep -v 'r'
+    done | sortcount -p
+
+```
+
+There are a few other important things to note with this code: 
+
+1. By running the `deg` command with the `-a` flag, I'm getting rid of other information, such as the melodic direction.
+2. The `|` is referred to as a `pipe`. It allows the output of one command to become the input of the next command. 
+3. I'm running the `extract` feature because this data has **two spines**. The right-hand column is chord symbols, which I'm not interested in at the moment, so I'm telling it to only take the melodies (and "extract" only `field` 1.)
+4. I then clean up my data by getting rid of all metadata and comments (with `rid -GLId`) and getting rid of the rests with `grep -v 'r'`. For those of you who haven't used much `bash` before, `grep` is a a way of searching line-by-line, and the `-v` flag is an inverse search, so it I'm basically telling it to return all lines that don't have an `r` in it, thereby excluding all rests. Before using this, you should ask whether rests are meaningful to your research question! 
+5. Note that I've put this all in a bash `loop`, which is slightly more verbose than loops in python, but less than other languages (such as javascript or C++). Note the required `do` and `done`.
+
+This gives us the following data. Put succinctly, 15.1% of notes in the *Charlie Parker Omnibook* are scale-degree 1, 12.72% are scale-degree 5, *etc.*
+
+```{txt}
+15.1    1
+12.72   5
+12.17   2
+11.97   3
+10.1    4
+9.4     6
+7.64    7
+4.18    7-
+3.22    4+
+2.58    6-
+2.45    1+
+2.44    3-
+1.95    5+
+1.54    2+
+0.78    6+
+0.53    3+
+0.48    2-
+0.27    1-
+0.24    5-
+0.21    7+
+```
+
+### HumdrumR
+
+The HumdrumR toolkit compiles corpora the same whether they contain a single piece or many, so we can just use the same `readHumdrum` command as before.
+
+```{r, warnings=FALSE, eval=FALSE}
+library(humdrumR)
+library(tidyverse)
+parker_omnibook <- readHumdrum("data/charlie_parker/*.krn")
+```
+
+
+```{r, warnings=FALSE, eval=FALSE}
+
+parker_omnibook_percentage <- 
+                parker_omnibook |> subset(Spine == 1) |> 
+                deg(simple = TRUE) |> count() |> 
+                as.data.frame() |> 
+                mutate(percentage = n/sum(n) * 100) |> arrange(desc(percentage))
+
+```
+
+There are some things to point out here:
+
+1. Here I'm storing everything into a variable with the `<-` tool.
+2. Notice that I have a corpus object (`parker_omnibook`) and I use the `pipe` object (|>)
+3. Instead of the extract tool, I'm using `subset`, and telling it to just grab the first spine.
+4. I'm using the `deg` tool, and rather than `deg -a` in Humdrum, I can just say `simple = TRUE` and get the same results. 
+5. I'm using the `count` command to summarize everything.
+6. One of the roughest aspects of HumdrumR is it's ability to play smoothly with native R data formats--I find that I often have to turn everything into a dataframe at some point.
+7. I then use `mutate` and `arrange` from the `tidyverse` toolkit. I created a percentage from scratch, rather than the `sortcount -p` flag in Humdrum.
+   
+All of the yields the following result:
+
+```{txt}
+   Deg    n   percentage
+1    1 2383 15.289362248
+2    5 1991 12.774284614
+3    2 1901 12.196843321
+4    3 1724 11.061208777
+5    4 1522  9.765173874
+6    6 1484  9.521365328
+7    7 1182  7.583728988
+8   7-  635  4.074169126
+9   3-  544  3.490311818
+10  4+  504  3.233671243
+11  6-  477  3.060438855
+12  1+  449  2.880790453
+13  5+  307  1.969716412
+14  2+  213  1.366611061
+15  2-   72  0.461953035
+16  6+   64  0.410624920
+17  3+   43  0.275888618
+18  7+   43  0.275888618
+19  5-   31  0.198896446
+20 1++    9  0.057744129
+21 4++    7  0.044912101
+22  1-    1  0.006416014
+
+```
+
+Notice that the data is *slightly* different between the two toolkits (15.1% vs. 15.29%). It'd be interesting to dive deeper a bit and see where these discrepancies lie...
+
+### music21
+
+music21 is a bit pickier when it comes to importing Kern files. As such, I created a new set of *cleaned* files that gets rid of the chords. It's not ideal, because the chords might be useful at another time. I think it's probably worth cleaning up the data at the source in the future (if that's possible).
+
+The first step is importing everything.
+
+```{python, eval=FALSE}
+from music21 import analysis, note, converter, humdrum
+import pandas as pd
+from collections import Counter
+import glob
+
+def filebrowser(ext="../data/charlie_parker_no_chords/*.krn"):
+    "Returns files with an extension"
+    return [f for f in glob.glob(ext)]
+
+file_list = filebrowser()
+file_list
+
+```
+
+
+Now we have a list of files, and the following function will import them, get the score, the key, and the scale degree (sd):
+
+```{python, eval=FALSE}
+from music21 import *
+import pandas as pd
+from collections import Counter
+
+def analyze_scale_degrees(file_list):
+    all_scale_degrees = []
+    
+    for file in file_list:
+        score = converter.parse(file)
+        key = score.analyze('key')
+        sc = scale.MajorScale(key.tonic)
+        
+        for pitch in score.pitches:
+            scale_degree = sc.getScaleDegreeFromPitch(pitch)
+            all_scale_degrees.append(scale_degree)
+    
+    scale_degree_counter = Counter(all_scale_degrees)
+    total_count = sum(scale_degree_counter.values())
+    
+    data = []
+    for degree, count in scale_degree_counter.most_common():
+        percentage = (count / total_count) * 100
+        data.append({
+            'Scale Degree': degree,
+            'Count': count,
+            'Percentage': f"{percentage:.2f}%"
+        })
+    
+    df = pd.DataFrame(data)
+    return df
+
+# Assuming file_list is defined
+result_table = analyze_scale_degrees(file_list)
+print(result_table.to_string(index=False))
+```
+
+This data will return it as a nice pandas table:
+
+```{python, eval=FALSE}
+result_table = analyze_scale_degrees(file_list)
+print(result_table.to_string(index=False))
+```
+
+Note that it has a lot of NaNs, and the numbers are fairly different... This is definitely worth exploring a bit...
+
+```{txt}
+Scale Degree  Count Percentage
+          NaN   6041     23.75%
+          1.0   3788     14.89%
+          5.0   3313     13.03%
+          2.0   3013     11.85%
+          3.0   2720     10.69%
+          4.0   2713     10.67%
+          6.0   2134      8.39%
+          7.0   1713      6.73%
+
+```
+
+:::
+
+### Exercise:
+
+On Canvas there is a Dizzy Gillespie folder to supplement this Charlie Parker data. Run the same analyses but with this folder. Let's address the following questions:
+
+1. How are the corpora different? 
+2. What do you think the similarities and differences might mean?
+
+# Note-to-Note Ideas (n-grams)
+
+Now that we've figured out how to create a dataset, let's look at how we might ask about specific note-to-note ideas. For example:
+
+1. What are the most common 2-note, 3-note, and 4-note events in our corpus?
+2. What are the most common 2-note, 3-note, and 4-note events of only *consecutive downbeats?*
+3. What are the most common 2-note, 3-note, and 4-note events of only *consecutive strong beats?*
+4. What are the most common 2-note, 3-note, and 4-note events of only *consecutive beats?*
+
+## Most Common 2-note, 3-note, and 4-note events
+
+::: {.panel-tabset}
+## Humdrum
+
+In Humdrum, this is easy to do. We just take the code we previously used and then we add the `context` tool, with the `-n` flag indicating how many notes we'd like to look at:
+
+```{bash, eval=FALSE}
+for file in *.krn
+    do
+        deg -a $file | 
+        extract -f 1 | 
+        rid -GLId | 
+        grep -v 'r' | 
+        grep -v '=' | 
+        context -n 2
+    done | sortcount -p
+```
+
+This returns the following (note that there's a long tail with n-grams, so I've just returned the top few):
+
+```{txt}
+3.88    2 1
+3.35    5 4
+3.13    4 3
+2.81    3 2
+2.57    3 5
+2.57    1 2
+2.51    1 7
+2.31    7 1
+2.13    3 4
+2.05    1 6
+2.01    1 3
+1.99    6 5
+1.9     6 1
+1.7     7 2
+1.68    3 1
+1.66    5 3
+
+```
+
+If we'd like to change that to three notes, it's very easy:
+
+```{bash, eval=FALSE}
+for file in *.krn
+    do
+        deg -a $file | 
+        extract -f 1 | 
+        rid -GLId | 
+        grep -v 'r' | 
+        grep -v '=' | 
+        context -n 3
+    done | sortcount -p
+```
+
+Notice that the only difference is that I changed `context -n 2` to `context -n 3`. This results in the following:
+
+```{txt}
+
+1.78    5 4 3
+1.57    2 1 7
+1.46    4 3 2
+1.33    3 2 1
+0.9     6 5 4
+0.89    1 2 1
+0.85    6 1 3
+0.84    1 7 6
+0.82    3 4 5
+0.81    1 3 5
+0.78    7 1 2
+0.63    5 3 4
+0.62    2 7 1
+0.62    1 2 3
+0.58    1 7- 6
+```
+
+## HumdrumR
+
+For this one, I've commented the code a bit more, as I had to do a few workarounds to get it working.
+
+
+```{r, eval=FALSE, warnings=FALSE}
+library(tidyverse)
+library(tidytext)
+
+parker_omnibook |>
+    ### grab only the first spine.
+  subset(Spine == 1) |>
+    ### turn the data into simple scale degrees.
+  deg(simple = TRUE) |>
+    ## as before, make it into a dataframe.
+  as.data.frame() |>
+    ### clean the data a bit and only get the V1 column, and get rid
+    ### of the null data tokens (".")
+  select(V1) |>
+  filter(V1 != ".") |>
+    ### the lead function gets the next data from the current data.
+  mutate(next_note = lead(V1)) |>
+    ### get rid of any NAs that show up.
+  filter(!is.na(next_note)) |>
+    ### start creating a table in the "bigram" column
+  unite(bigram, V1, next_note, sep = " ") |>
+    ### gives us the n column
+  count(bigram, sort = TRUE) |>
+  ### this is the mutate code from before.
+  mutate(percentage = n / sum(n) * 100) |>
+  #### get only the top 15 results.
+  head(15)  
+```
+
+This gives us this data:
+
+```{txt}
+   bigram   n percentage
+1     2 1 620   3.978184
+2     5 4 506   3.246712
+3     1 2 421   2.701315
+4     4 3 408   2.617902
+5     1 7 393   2.521655
+6     3 2 377   2.418993
+7     3 5 364   2.335579
+8     7 1 355   2.277831
+9     1 6 320   2.053256
+10    3 4 298   1.912095
+11    1 3 290   1.860764
+12    6 1 289   1.854347
+13    6 5 288   1.847931
+14    7 2 252   1.616939
+15    1 1 242   1.552775
+```
+
+
+If we wanted to look at 3- or 4- grams we could just update the code a bit in the middle:
+
+
+```{r, eval=FALSE, warnings=FALSE}
+  parker_omnibook |>
+    ### grab only the first spine.
+  subset(Spine == 1) |>
+    ### turn the data into simple scale degrees.
+  deg(simple = TRUE) |>
+    ## as before, make it into a dataframe.
+  as.data.frame() |>
+    ### clean the data a bit and only get the V1 column, and get rid
+    ### of the null data tokens (".")
+  select(V1) |>
+  filter(V1 != ".") |>
+    ### the lead function gets the next data from the current data.
+   mutate(
+    #### now I'm grabbing a next note and a next, next note.
+    next_note = lead(V1),
+    next_next_note = lead(V1, 2)
+  ) |>
+  filter(!is.na(next_next_note)) |>
+  unite(trigram, V1, next_note, next_next_note, sep = " ") |>
+  count(trigram, sort = TRUE) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  #### get only the top 15 results.
+  head(15) 
+```
+
+This gives us the following:
+```{txt}
+   trigram   n percentage
+1    2 1 7 251  1.6106263
+2    5 4 3 245  1.5721253
+3    3 2 1 171  1.0972793
+4    4 3 2 171  1.0972793
+5    1 2 1 142  0.9111910
+6    7 1 2 131  0.8406057
+7    6 5 4 127  0.8149384
+8    1 7 6 124  0.7956879
+9    6 1 3 124  0.7956879
+10   3 4 5 121  0.7764374
+11   1 3 5 114  0.7315195
+12   2 7 1  93  0.5967659
+13   2 1 6  92  0.5903491
+14   7 2 1  91  0.5839322
+15   1 2 3  90  0.5775154
+
+```
+
+And so on...
+
+```{r, eval=FALSE, warnings=FALSE}
+
+parker_omnibook |>
+    ### grab only the first spine.
+  subset(Spine == 1) |>
+    ### turn the data into simple scale degrees.
+  deg(simple = TRUE) |>
+    ## as before, make it into a dataframe.
+  as.data.frame() |>
+    ### clean the data a bit and only get the V1 column, and get rid
+    ### of the null data tokens (".")
+  select(V1) |>
+  filter(V1 != ".") |>
+    ### the lead function gets the next data from the current data.
+ 
+  mutate(
+    ###LOLZ so many mutations...
+    next_note = lead(V1),
+    next_next_note = lead(V1, 2),
+    next_next_next_note = lead(V1, 3)
+  ) |>
+  filter(!is.na(next_next_next_note)) |>
+    ###ok, this is just ridiculousnesslessness.
+  unite(fourgram, V1, next_note, next_next_note, next_next_next_note, sep = " ") |>
+  count(fourgram, sort = TRUE) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  #### get only the top 15 results.
+  head(15) 
+```
+
+## music21
+The python code uses a similar logic as above, but includes the `zip` and `list` tools to create bigrams:
+
+
+```{python, eval=FALSE}
+
+from music21 import converter, scale
+from collections import Counter
+import pandas as pd
+
+def analyze_scale_degree_bigrams(file_list):
+    all_bigrams = []
+    
+    for file in file_list:
+        score = converter.parse(file)
+        key = score.analyze('key')
+        sd = scale.MajorScale(key.tonic)
+        
+        scale_degrees = []
+        for pitch in score.pitches:
+            scale_degree = sd.getScaleDegreeFromPitch(pitch)
+            ## for some reason NONE was coming back sometimes. I think for barlines, maybe?? So I got rid of those,
+            if scale_degree is not None:
+                scale_degrees.append(scale_degree)
+        
+        # Create bigrams
+        bigrams = list(zip(scale_degrees[:-1], scale_degrees[1:]))
+        all_bigrams.extend(bigrams)
+    
+    bigram_counter = Counter(all_bigrams)
+    total_count = sum(bigram_counter.values())
+    
+    ##create an empty list!
+    data = []
+    for bigram, count in bigram_counter.most_common():
+        if None not in bigram:  # Exclude bigrams containing None
+            percentage = (count / total_count) * 100
+            data.append({
+                '2-gram': f"{bigram[0]}-{bigram[1]}",
+                'Count': count,
+                'Percentage': f"{percentage:.2f}%"
+            })
+    
+    df = pd.DataFrame(data)
+    return df
+
+### and this creates a nice pretty table!
+bigram_df = analyze_scale_degree_bigrams(file_list)
+print(bigram_df)
+```
+
+In order to change it to trigrams, you'll just play with `zip` a bit:
+
+```{python, eval=FALSE}
+from music21 import converter, scale
+from collections import Counter
+import pandas as pd
+
+def analyze_scale_degree_trigrams(file_list):
+    ###lots of lists!
+    all_trigrams = []
+    
+    for file in file_list:
+        score = converter.parse(file)
+        key = score.analyze('key')
+        sd = scale.MajorScale(key.tonic)
+        ### create another list.
+        scale_degrees = []
+        for pitch in score.pitches:
+            scale_degree = sd.getScaleDegreeFromPitch(pitch)
+            if scale_degree is not None:
+                scale_degrees.append(scale_degree)
+        #### this is the zip part. 
+        trigrams = list(zip(scale_degrees[:-2], scale_degrees[1:-1], scale_degrees[2:]))
+        all_trigrams.extend(trigrams)
+    
+    trigram_counter = Counter(all_trigrams)
+    total_count = sum(trigram_counter.values())
+    ## create the list.
+    data = []
+    for trigram, count in trigram_counter.most_common():
+        if None not in trigram:  
+            percentage = (count / total_count) * 100
+            data.append({
+                '3-gram': f"{trigram[0]}-{trigram[1]}-{trigram[2]}",
+                'Count': count,
+                'Percentage': f"{percentage:.2f}%"
+            })
+    
+    df = pd.DataFrame(data)
+    return df
+
+##print nice trigrams!
+trigram_df = analyze_scale_degree_trigrams(file_list)
+print(trigram_df)
+```
+:::
+
+
+### In-Class Exercise
+
+It might be worth exploring your encoding from the weekend, exploring a couple of questions: 
+
+1. If you look at only downbeats, what is the most common 2-, 3-, and 4-note pattern?
+   1. How do they differ? Which of these points of segmentation do you think is most musically meaningful?
+
+
+
+# N-grams by Beat Strength
+
+
+
+
+
+The thing is, some notes are more important than others. Downbeats, for example, might be thought of as more salient than offbeats.
+
+![Example of Beat Hierarchy from *A Generative Theory of Tonal Music*, this example from Cross, 1998](../images/gttm-k311-beats.png)
+
+So how would we look for downbeats, strong beats, and just beats in general?
+
+
+::: {.panel-tabset}
+
+## Humdrum
+
+The humdrum code looks like this, and it's probably worth discussing it a bit, as the logic has changed a bit.
+ 
+1. First, we extract all of the melodic information
+2. Then we use the `timebase` command from Humdrum, which expands all of the bars to have the same rhythmic durations by adding null tokens that equal the amount I put in. Here I told it to use 16th notes, but it's possible that Charlie Parker had some pieces that had 32nd notes or 64th notes (in fact, he definitely did). I could change that as I see fit...
+3. I then run the `metpos` command, which gives a metric strength count to every note.
+4. With `metpos`, it uses the inverse of GTTM, so 1 is the strongest.
+5. *Then* I get the scale degrees and get rid of metadata. 
+6. Then I grab only lines that end with 1, as that would be the strongest beat. I use the `regular expression` for an end of line, which is a `$`. Note that the `$` symbol means many things in many contexts, but with grep in this context it means end of line. (`^` means beginning of line)
+7. I then get rid of barlines and use the `cut` tool to only give me the first column (similar to `extract` but not `humdrum` specific). 
+8. Then I use my context tool. I could change that to 3, 4, 5, *etc.* 
+
+
+```{bash, eval=FALSE, warnings=FALSE}
+for file in *.krn
+  do
+    extract -f 1 $file | timebase -t 16  | 
+    metpos | deg -a | rid -GLId | grep '1$' | 
+    grep -v '=' | cut -f 1 | context -n 2   
+  done | sortcount -p
+```
+
+I get these results, and there are a lot of rests! Should I get rid of the rests in this situation? I'm not sure that I should...
+
+```{txt}
+23.49   r r
+2.88    5 r
+2.75    r 1
+2.69    r 5
+2.61    3 r
+2.29    1 r
+2.02    r 3
+2       r 4
+1.95    2 r
+1.47    1 1
+1.45    1 5
+1.45    r 2
+```
+
+If I only wanted to get the downbeats and the second strongest beat (beat 3 in 4/4 time, for example), I could just change the metric strength I'm grabbing.
+
+```{bash, eval=FALSE}
+for file in *.krn
+  do
+    extract -f 1 $file | timebase -t 16  | 
+    metpos | deg -a | rid -GLId | grep '[12]$' | 
+    grep -v '=' | cut -f 1 | context -n 2   
+  done | sortcount -p
+```
+
+And the above code yieldds:
+
+```{txt}
+15.52   r r
+12.27   .
+2.11    3 r
+2.03    r 1
+1.82    5 r
+1.74    r 5
+1.71    1 r
+1.6     r 3
+1.51    3 2
+1.43    2 r
+1.32    1 1
+1.31    5 3
+1.28    r 2
+1.26    3 1
+1.22    5 2
+1.16    7 5
+1.12    1 5
+```
+
+## HumdrumR
+
+We can use much of the bigram code as before, but I start by creating two separate 
+bits of data (metric position and scale degree, because HumdrumR is being grumpy...)
+```{r, eval=FALSE,}
+library(tidyverse)
+library(tidytext)
+library(humdrumR)
+
+
+metric_position <- as_tibble(parker_omnibook$Token |> metlev())
+scale_degree <- parker_omnibook$Token |> deg(simple=TRUE)
+scale_degree <- as.list.data.frame(scale_degree)
+
+sd_beat <- cbind(scale_degree, metric_position) |> as.data.frame()
+sd_beat <- as.data.frame(sd_beat)
+sd_beat <- sd_beat |> filter(value == 1) |> select(scale_degree)
+```
+
+Then I do the typical bigram stuff:
+```{r, eval=FALSE, warnings=FALSE}
+sd_beat |>  mutate(
+    next_note = lead(scale_degree),
+  ) |>
+    ###bigrams
+  unite(bigram, scale_degree, next_note, sep = " ") |>
+  count(bigram, sort = TRUE) |>
+  mutate(percentage = n / sum(n) * 100) |> head(15)
+```
+
+And this gives me this:
+
+```{txt}
+   bigram  n percentage
+1     1 1 82   2.390671
+2   7- 7- 75   2.186589
+3     1 4 73   2.128280
+4    7- 4 64   1.865889
+5     4 4 63   1.836735
+6    7- 1 63   1.836735
+7    1 7- 57   1.661808
+8     4 6 53   1.545190
+9    4 7- 53   1.545190
+10    4 1 52   1.516035
+11    5 1 49   1.428571
+12  3- 7- 48   1.399417
+13    4 5 45   1.311953
+14   6 7- 44   1.282799
+15    1 5 43   1.253644
+```
+
+It's interesting to me that this seems to exclude rests. I can't really see where that happened or why, and it worries me a little bit.
+
+## music21
+
+This code returns scale degree and beat strength. I added the MX conditional because sometimes there are strange time signatures that come in with some data (usually the Essen Folksong collection data, not this data, but it's still useful).
+
+```{python, eval=FALSE}
+
+### your code below
+def beat_and_strength_as_column(filename):
+    
+    beat_strength = []
+    scale_degree = []
+
+    # open the file so we can read through it
+
+    kern_file = [line.rstrip() for line in open(filename, "r+")]
+
+    # skip file if it has an MX in it, use it if it does not
+    # this gets rid of irregular time signatures
+
+    if "MX" not in kern_file:
+        melody = converter.parse(filename)
+        ### getting all pitches as scale degree.
+        
+        pitch_count = analysis.discrete.KrumhanslKessler(melody)
+        key = pitch_count.getSolution(melody)
+        my_list = []
+
+        for n in melody.flat.notes:
+            sd = key.getScaleDegreeFromPitch(n.name)
+            if sd is not None:
+                scale_degree.append(float(sd))
+            else:
+                scale_degree.append(0)
+            beat_strength.append(float(n.beatStrength))
+    else:
+        print(filename, "has irregular time signatures. Skipping.")
+
+    # print an output, but this note that this just a print to the console.
+    for beat, scale in zip(beat_strength, scale_degree):
+      # return(beat, scale)
+      print(f'{beat}\t{scale}')
+
+
+for file in file_list:
+  beat_and_strength_as_column(file)
+
+
+```
+
+This gives scale degree on the right, and "beat strength" on the left.
+
+```{txt}
+0.25	1.0
+1.0	1.0
+0.25	3.0
+0.5	4.0
+0.25	1.0
+1.0	2.0
+0.25	3.0
+0.5	4.0
+0.25	4.0
+1.0	4.0
+0.25	6.0
+0.5	6.0
+0.25	6.0
+1.0	5.0
+```
+
+### A brief comparison with AI
+You can then use Pandas or soemthing similar to come up with nice tabulations of the data. My code got quite big when I did this and I got a little grumpy. So the code above is mine, and the code below is AI-generated. I think mine is more transparent and logical, but the AI one is maybe more comprehensive? The use of pandas seems nicely executed, but there are some parts that maybe aren't that necessary. For example, there's probably a better way of handling the measures than by assigning m1 and m2 variables, and I'm not really sure how the`isinstance` condutional is functioning. Still, this seems to work somewhat well. 
+
+
+```{python, eval=FALSE}
+from music21 import *
+import pandas as pd
+
+def analyze_strong_beat_bigrams(file_list):
+    bigram_counts = {}
+    
+    for file in file_list:
+        score = converter.parse(file)
+        
+        for part in score.parts:
+            measures = part.getElementsByClass('Measure')
+            
+            for i in range(len(measures) - 1):
+                m1 = measures[i]
+                m2 = measures[i+1]
+                
+                ts = m1.timeSignature
+                if ts is None:
+                    ts = m1.getContextByClass('TimeSignature')
+                
+                if ts is None:
+                    continue
+                
+                strong_beat_elements1 = [n for n in m1.notesAndRests if n.beat == 1]
+                strong_beat_elements2 = [n for n in m2.notesAndRests if n.beat == 1]
+                
+                if strong_beat_elements1 and strong_beat_elements2:
+                    def get_element_name(elem):
+                        if isinstance(elem, note.Note):
+                            return elem.nameWithOctave
+                        elif isinstance(elem, note.Rest):
+                            return 'Rest'
+                        else:
+                            return 'Unknown'
+                    
+                    bigram = (get_element_name(strong_beat_elements1[0]), 
+                              get_element_name(strong_beat_elements2[0]))
+                    bigram_counts[bigram] = bigram_counts.get(bigram, 0) + 1
+    
+    # total bigrams
+    total_count = sum(bigram_counts.values())
+    
+    # percentages
+    percentages = {bigram: (count / total_count) * 100 for bigram, count in bigram_counts.items()}
+    
+    # make it into a pandas thing.
+    df = pd.DataFrame(list(bigram_counts.items()), columns=['Bigram', 'Count'])
+    return(df)
+  
+
+
+```
+
+:::
+
+## Exercises
+
+1. What are the most common downbeat-to-downbeat transitions in the Dizzy Gillespie dataset?
+2. How does it compare with the Charlie Parker dataset?
+3. There are some discrepencies at play between the calculations. Why do you think that is?
+
+
+# Melodic and Harmonic Intervals
+
+We can think of intervals in two separate ways: horizontal and vertical. In terms of horizontal, we might think of melodic intervals, or note-to-note patterns, or harmonic, which are notes playing at a same time. There are a few ways of calculating both of these.
+
+## Melodic Intervals
+
+In terms of melodic intervals, we can think of it in terms of (1) simple intervals or (2) compound intervals, and with each of those can include the melodic direction. It's worth thinking about whether your research question requires one of these over another. 
+
+Returning to "Happy Birthday", perhaps I have a research question about how often melodic leaps are followed by steps:
+
+![Happy Birthday](../images/happy-birthday.png){width=75%}
+
+Not that the first melodic interval is a unison (a P1), and the second is an ascending major second (D going to E). It's then followed by a descending major second, and an ascending perfect fourth. [Open Music Theory](https://viva.pressbooks.pub/openmusictheory/chapter/intervals/) has a good introduction to this, if you'd feel like you could use a bit of an introduction or refresher.
+
+Back to our research question, we want to know what intervals are followed by leaps. For `Humdrum`, `music21`, and `HumdrumR`, it will primarily be the same code, but with some minor changes. In terms of `Humdrum` we can just take our old code for `deg`, but change `deg` to `mint`.
+
+For example, the code below does a few things: (1) it calculates the melodic interval with `mint`, (2) it gets rid of the metadata with the `rid` tool (global, local, interpretative, and data tokens with the GLId flags), it (3) gets rid of barlines with `grep -v`, it (4) runs the `context` tool to get note-by-note transitions, and then it (5) counts all of these and gives a percentage with `sourtcount -p`.
+
+```{bash, eval=FALSE}
+mint ../data/happy_birthday.krn | rid -GLId | grep -v '=' | context -n 2 | sortcount -p 
+```
+
+This gives us the following:
+
+```{txt}
+12.5    +M2 -M2
+8.33    -M3 P1
+8.33    P1 +M2
+4.17    -m2 -M3
+4.17    P1 +M7
+4.17    +M7 -M3
+4.17    +P4 -m2
+4.17    P1 +P8
+4.17    -M2 +P5
+4.17    -m2 -M2
+4.17    -m3 -M3
+4.17    -M2 +P4
+4.17    -M2 -M3
+4.17    [d] P1
+4.17    -P4 P1
+4.17    -M3 -m2
+4.17    +P5 -M2
+4.17    -M3 +M2
+4.17    -M2 -P4
+4.17    +P8 -m3
+```
+
+If we aren't intereseted in the melodic direction, we could have just added the `-a` flag to `mint`.
+
+In terms of the research question, I want to know what intervals follow **big** intervals. So I will use what is called a **regular expression**. 
+
+```{bash, eval=FALSE}
+mint ../data/happy_birthday.krn | rid -GLId | grep -v '=' | context -n 2 | grep '[45678] '
+```
+
+This returns this data: 
+
+```{txt}
++P4 -m2
++P5 -M2
+-P4 P1
++P8 -m3
++M7 -M3
+```
+
+The final part of the code (`grep '[45678] ')` has brackets, which means it's searching for 4, 5, 6, 7, or 8, followed by a space (which is what context returns).
+
+Although I'm using `Humdrum` here, it's worth knowing that regular expressions can be used in all of the languages and toolkits that we are working with.
+
+So a brief comparison of the code:
+
+:::{.panel-tabset}
+
+## Humdrum
+
+The code from above can help us with this.
+```{bash, eval=FALSE}
+mint ../data/happy_birthday.krn | rid -GLId | grep -v '=' | context -n 2 | grep '[45678] '
+```
+
+## HumdrumR
+
+HumdrumR is pretty obviously derived from Humdrum here, in that you can just run the `mint` function. Again, the manual pages for HumdrumR (found [here](https://humdrumr.ccml.gtcmt.gatech.edu/articles/PitchAndTonality.html?q=melodic%20int#melodic-intervals)) are quite useful.
+
+```{r, eval=FALSE}
+library(tidyverse)
+library(humdrumR)
+
+happy_birthday <- readHumdrum("data/happy_birthday.krn")
+mint(happy_birthday) 
+```
+
+
+The code below is identical to the `deg` code above, but with `mint` instead of `deg`.
+```{r, eval=FALSE}
+
+mint(happy_birthday) |>
+    as.data.frame() |>
+    ### clean the data a bit and only get the V1 column, and get rid
+    ### of the null data tokens (".")
+    select(V1) |>
+    filter(V1 != ".") |>
+    ### the lead function gets the next data from the current data.
+     mutate(next_note = lead(V1)) |>
+    ### get rid of any NAs that show up.
+    filter(!is.na(next_note)) |>
+    ### start creating a table in the "bigram" column
+    unite(bigram, V1, next_note, sep = " ") |>
+    ### gives us the n column
+    count(bigram, sort = TRUE) |>
+  ### this is the mutate code from before.
+  mutate(percentage = n / sum(n) * 100) 
+```
+
+```{txt}
+    bigram n percentage
+1  +M2 -M2 3  12.500000
+2   -M3 P1 2   8.333333
+3   P1 +M2 2   8.333333
+4  +M7 -M3 1   4.166667
+5  +P4 -m2 1   4.166667
+6  +P5 -M2 1   4.166667
+7  +P8 -m3 1   4.166667
+8  -M2 +P4 1   4.166667
+9  -M2 +P5 1   4.166667
+10 -M2 -M3 1   4.166667
+11 -M2 -P4 1   4.166667
+12 -M3 +M2 1   4.166667
+13 -M3 -m2 1   4.166667
+14  -P4 P1 1   4.166667
+15 -m2 -M2 1   4.166667
+16 -m2 -M3 1   4.166667
+17 -m3 -M3 1   4.166667
+18  P1 +M7 1   4.166667
+19  P1 +P8 1   4.166667
+20  [d] P1 1   4.166667
+```
+
+We can filter out the big intervals. Here, I'm going to take all of this data and assign it to a variable.
+
+
+```{r, eval=FALSE}
+
+minty_birthday <- mint(happy_birthday) |>
+    as.data.frame() |>
+    ### clean the data a bit and only get the V1 column, and get rid
+    ### of the null data tokens (".")
+    select(V1) |>
+    filter(V1 != ".") |>
+    ### the lead function gets the next data from the current data.
+     mutate(next_note = lead(V1)) |>
+    ### get rid of any NAs that show up.
+    filter(!is.na(next_note)) |>
+    ### start creating a table in the "bigram" column
+    unite(bigram, V1, next_note, sep = " ") |>
+    ### gives us the n column
+    count(bigram, sort = TRUE) |>
+  ### this is the mutate code from before.
+  mutate(percentage = n / sum(n) * 100) 
+
+
+```
+
+And this code, using `filter` and then R's version of `grep` (`grepl`) we can get the same results:
+
+```{r, eval=FALSE}
+minty_birthday |> filter(grepl("[45678] ", bigram))
+```
+
+
+```{txt}
+   bigram n percentage
+1 +M7 -M3 1   4.166667
+2 +P4 -m2 1   4.166667
+3 +P5 -M2 1   4.166667
+4 +P8 -m3 1   4.166667
+5  -P4 P1 1   4.166667
+```
+
+## music21
+
+The music21 manual page on intervals (found [here](https://www.music21.org/music21docs/moduleReference/moduleInterval.html)) is very, very useful on this. 
+
+```{python, eval=FALSE}
+from music21 import converter, interval
+from collections import Counter
+import pandas as pd
+
+def mint_bigrams(file_list):
+    all_bigrams = []
+    
+    for file in file_list:
+        score = converter.parse(file)
+        
+        ###list comprehension, etc.
+        pitches = [p for p in score.pitches if p is not None]
+        
+        # create an interval list
+        intervals = []
+
+        ### some conditionals to label the directions.
+        ### 1 = ascending, 0 = oblique (no motion), -1 = descending. 
+        ### here I've just > 0, less than 0 and else (ascending, decending, and oblique).
+
+        for i in range(len(pitches) - 1):
+            my_interval = interval.Interval(pitches[i], pitches[i+1])
+            semitones = my_interval.semitones
+            
+            if semitones > 0:
+                direction = "Ascending"
+            elif semitones < 0:
+                direction = "Descending"
+            else:
+                direction = "Oblique"
+
+            interval_name = f"{direction} {my_interval.semiSimpleName}"
+            intervals.append(interval_name)
+        
+        # Create bigrams of intervals
+        bigrams = list(zip(intervals[:-1], intervals[1:]))
+        all_bigrams.extend(bigrams)
+    
+    bigram_counter = Counter(all_bigrams)
+    total_count = sum(bigram_counter.values())
+    
+    data = []
+    for bigram, count in bigram_counter.most_common():
+        percentage = (count / total_count) * 100
+        data.append({
+            'Interval Bigram': f"{bigram[0]} -> {bigram[1]}",
+            'Count': count,
+            'Percentage': f"{percentage:.2f}%"
+        })
+    
+    df = pd.DataFrame(data)
+    return df
+
+# Usage
+bigram_df = mint_bigrams(file_list)
+print(bigram_df)
+
+
+```
+
+This is quite cool, but took a bit more work. Still, it's more flexible and can give more info...
+
+```{txt}
+0    Descending P1 -> Descending P1   2780     18.58%
+1    Descending P1 -> Descending m2    387      2.59%
+2    Descending m2 -> Descending P1    360      2.41%
+3     Descending m2 -> Ascending m2    310      2.07%
+4    Descending M2 -> Descending P1    305      2.04%
+```
+
+
+In class, we were stumped a bit with extracting from a music21 stream. The code below will do it.
+
+```{python, eval=FALSE}
+### import the toolkits
+import glob
+from music21 import *
+
+### adjust your own path accordingly!!!
+def filebrowser(ext="../data/humdrum_scores/Barbershop/*.krn"):
+    return glob.glob(ext)
+
+file_list = filebrowser()
+
+### here's a loop to get the melodic intervals from only the bass part.
+for file in file_list:
+    score = converter.parse(file)
+    #### THIS IS THE CODE I WAS STRUGGLING WITH IN CLASS!
+    first_part = score.parts[0]
+    notes = first_part.recurse().notesAndRests
+    for i in range(len(notes) - 1):
+        if notes[i].isNote and notes[i+1].isNote:
+            my_interval = interval.Interval(notes[i], notes[i+1])
+            print(f"{my_interval.directedName}")
+
+
+```
+
+THat gives us this list...
+
+```{txt}
+P1
+P1
+m2
+M2
+m-3
+P1
+P1
+m3
+P1
+P1
+P1
+m-3
+P1
+P1
+m3
+P1
+m-2
+
+etc.
+
+```
+
+:::
+
+## Harmonic Intervals
+
+We can think of vertical sonorities in a number of ways. First, we can think of `harmonic intervals`. Humdrum does this with the `hint` tool.
+
+For this, we will need to look at a different dataset. Let's look at the Barber Shop Quartet dataset. This can be found on both the Canvas page and the github repo.
+
+
+::: {.panel-tabset}
+
+## Humdrum
+
+With Humdrum, we can just use `hint` instead of `mint`. 
+
+```{bash, eval=FALSE}
+for file in ../data/humdrum_scores/Barbershop/*.krn
+  do  
+    hint  $file
+  done | sortcount -p
+```
+
+This gives us this data:
+
+```{txt}
+7.91    P5 P4 M3
+6.89    P5 m3 A4
+5.69    M3 m3 m3
+5.61    P4 M3 d5
+5.24    M3 m3 P4
+4.58    m3 M2 M3
+2.62    m3 M3 P4
+2.54    M6 m3 M3
+```
+
+This means that, of the four voices, there's a Perfect Fifth, a Perfect Fourth, and a Major Third, etc. (C-G-C-E). This is a major triad with the third of the chord in the top voice and the root of the chord in the bass.
+
+## HumdrumR
+
+```{r, eval=FALSE}
+barbershop <- readHumdrum("data/humdrum_scores/Barbershop/*.krn")
+hint(barbershop)
+```
+
+This returns this data:
+
+```{txt}
+     1:  !! "Are You From Dixie?" by George Cobb, arranged ***
+     2:  !! from "Close Harmony Classics for Barbershop Qua***
+     3:  !! copyright 1915 & 1952 by M. Witmark & Sons; pp.***
+     4:  !! NOTE:  The "tag ending" is encoded here without***
+     5:       **interval     **interval     **interval     **interval
+     6:                .              .              .              .
+     7:              *C:            *C:            *C:            *C:
+     8:               =1             =1             =1             =1
+     9:              [C]            +P8            -P4            +M6
+    10:               =2             =2             =2             =2
+    11:              [B]            +m3            +M2            +M3
+    12:              [E]            +P5            +m3            +P4
+    13:               =3             =3             =3             =3
+    14:              [F]            +M3            +m3            +P4
+    15:             [F#]            +P4            -M2            +A4
+```
+
+So we get the root and the intervals. If we want to grab only the intervals, we can look at it something like this:
+
+I think that 
+
+```{r, eval=FALSE}
+x <- hint(barbershop) |> as.data.frame()
+y <- paste(x$V2, x$V3, x$V4, sep = "_")
+
+y |> count(sort = TRUE) |> 
+                as.data.frame() |> 
+                mutate(percentage = n/sum(n) * 100) |> 
+                arrange(desc(percentage))
+```
+
+This gives us this data. **NOTE**: Notice the null data tokens. How would I clean that up? (hint: it's in some code above–NB: no pun intended on the *hint*).
+
+```{txt}
+           ._._. 284 6.56192237
+2     +P5_+P4_+M3 186 4.29759704
+3     +m7_-m3_+M6 185 4.27449168
+4     +M3_+m3_+m3 164 3.78927911
+5     +m3_+M2_+M3 144 3.32717190
+6     +M6_-M3_+m7 128 2.95748614
+7     +M3_+m3_+P4 118 2.72643253
+8     +P8_-P4_+M6 105 2.42606285
+9     +P8_-m3_+P5  81 1.87153420
+10    +P4_+M3_+d5  77 1.77911275
+
+```
+
+## music21 
+
+For music21 we will import all of our files first:
+
+```{python, eval=FALSE}
+
+import glob
+from music21 import *
+from collections import Counter
+
+
+def filebrowser(ext="../data/humdrum_scores/Barbershop/*.krn"):
+    "Returns files with an extension"
+    return [f for f in glob.glob(ext)]
+
+file_list = filebrowser()
+file_list
+```
+
+One of the strengths (and weaknesses) of music21 is the data structure, using a "stream" to store its data. Here, it's actually quite useful, and we can grab many attributes of a single chord, such as the measure number, the beat, and a chord quality. Music21 lets you represents these chords in _so, so, so many ways_ as well. See the [chord documentation](https://www.music21.org/music21docs/moduleReference/moduleChord.html) for more.
+
+```{python, eval=FALSE}
+def hint(filename):
+    print(f"Working on {filename}")
+    barbershop = converter.parse(filename)
+    barbershopChords = barbershop.chordify()
+    chord_list = []
+    
+    for thisChord in barbershopChords.recurse().getElementsByClass(chord.Chord):
+        chord_info = (thisChord.measureNumber, thisChord.beatStr, thisChord.commonName)
+        chord_list.append(chord_info)
+        print(f"Measure: {thisChord.measureNumber}, Beat: {thisChord.beatStr}, Chord: {thisChord.pitchedCommonName}")
+    
+    return chord_list
+
+for file in file_list:
+    hint(file)
+
+```
+
+
+And we get this data:
+
+```{txt}
+Measure: 1, Beat: 1, Chord: G-major triad
+Measure: 1, Beat: 1 1/2, Chord: E-minor triad
+Measure: 1, Beat: 2, Chord: G-Perfect Octave
+Measure: 1, Beat: 2 1/2, Chord: D-dominant seventh chord
+Measure: 2, Beat: 1, Chord: G-major triad
+Measure: 2, Beat: 1 1/4, Chord: G-major triad
+Measure: 2, Beat: 1 3/4, Chord: G-major triad
+Measure: 2, Beat: 2, Chord: G-major triad
+Measure: 2, Beat: 2 1/2, Chord: G-major triad
+Measure: 3, Beat: 1, Chord: G#-half-diminished seventh chord
+Measure: 3, Beat: 2, Chord: E-dominant seventh chord
+Measure: 4, Beat: 1, Chord: E-minor seventh chord
+Measure: 4, Beat: 1 1/2, Chord: E-major triad
+```
+:::
+
+
+## Classroom Exercises
+
+1. What are the most common chords in the Barbershop quartet? 
+2. How will you choose to represent those chords in a normalized way?
+3. Would you like to give chord-to-chord transitions a try???
