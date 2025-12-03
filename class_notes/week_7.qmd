@@ -563,9 +563,6 @@ What would be a better research question?
 
 # Looking at Timbre
 
----
-title: "Week 8: Adding Features"
----
 ```{r, message=FALSE, warnings=FALSE}
 library(spotifyr)
 library(compmus)
